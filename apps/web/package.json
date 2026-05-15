@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "test:rls": "vitest run tests/supabase-rls.test.ts",
+    "test:rls": "vitest run --config vitest.rls.config.ts",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install --with-deps chromium"
   },

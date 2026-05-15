@@ -9,3 +9,6 @@ dist
 .DS_Store
 pnpm-debug.log*
 cursor-orch-output.json
+
+**/playwright-report/
+**/test-results/

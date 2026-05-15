@@ -9,11 +9,6 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    exclude: [
-      "**/node_modules/**",
-      "**/dist/**",
-      "**/playwright/**",
-      "tests/supabase-rls.test.ts",
-    ],
+    include: ["tests/supabase-rls.test.ts"],
   },
 });
