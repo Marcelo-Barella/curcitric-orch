@@ -28,3 +28,11 @@
 
 - Title format: `[<project_name>] <Title>` using the workspace package name (for example `[web]`, `[@curcitric-orch/worker]`, `[@curcitric-orch/shared]`).
 - Always run `pnpm lint` and `pnpm test` before committing.
+
+## Cursor Cloud specific instructions
+
+- The VM already has Node 22 and pnpm 9.12.0 available. The update script runs `pnpm install --frozen-lockfile` on startup.
+- The web app (`pnpm --filter web dev`) requires Supabase credentials in `.env` / `.env.local` to serve pages (middleware enforces them). Without valid `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`, the server starts but returns 500 on all routes.
+- The worker (`pnpm --filter @curcitric-orch/worker dev`) requires `DATABASE_URL` (Postgres with SSL) and the `cursor-orch` npm package installed at runtime. Its TypeScript build (`tsc`) will fail with a missing module error for `cursor-orch` since it is dynamically imported; this does not block `tsx watch` in dev mode.
+- Only the `web` package has a lint task defined (ESLint). Running `pnpm lint` at the root only lints `web`.
+- All three packages (`web`, `@curcitric-orch/worker`, `@curcitric-orch/shared`) have Vitest tests runnable via `pnpm test` at the root.
