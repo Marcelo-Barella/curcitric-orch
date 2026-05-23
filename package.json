@@ -5,6 +5,7 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "turbo dev",
+    "env:sync": "node scripts/sync-env.mjs",
     "lint": "turbo lint",
     "test": "turbo test",
     "build": "turbo build"
