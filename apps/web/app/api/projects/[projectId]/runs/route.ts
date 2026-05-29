@@ -44,10 +44,15 @@ export async function POST(
   if (error)
     return NextResponse.json({ error: error.message }, { status: 400 });
 
-  await supabase.from("orchestration_jobs").insert({
+  const { error: jobError } = await supabase.from("orchestration_jobs").insert({
     run_id: inserted!.id,
     status: "pending",
   });
+
+  if (jobError) {
+    await supabase.from("orchestration_runs").delete().eq("id", inserted!.id);
+    return NextResponse.json({ error: jobError.message }, { status: 400 });
+  }
 
   return NextResponse.json({ runId: inserted!.id });
 }

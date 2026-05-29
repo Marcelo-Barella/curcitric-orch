@@ -8,6 +8,59 @@ interface LaunchDeps {
 
 type LaunchFn = (deps: LaunchDeps) => Promise<{ orchestrationRunId: string }>;
 
+type ClaimedJob = {
+  job_id: string;
+  run_id: string;
+  config_snapshot: unknown;
+};
+
+export async function claimPendingJobs(
+  sql: postgres.Sql,
+  workerId: string,
+  limit = 5,
+): Promise<ClaimedJob[]> {
+  return sql.begin(async (txn) => {
+    const claimed = await txn<ClaimedJob[]>`
+      with picked as (
+        select j.id, j.run_id
+        from public.orchestration_jobs j
+        where j.status = 'pending'
+          and j.available_at <= now()
+        order by j.available_at asc
+        limit ${limit}
+        for update skip locked
+      )
+      update public.orchestration_jobs j
+      set status = 'processing', claimed_by = ${workerId}
+      from picked
+      where j.id = picked.id
+      returning j.id as job_id, picked.run_id as run_id
+    `;
+
+    if (!claimed.length) return [];
+
+    const runIds = [...new Set(claimed.map((row) => row.run_id))];
+    await txn`
+      update public.orchestration_runs
+      set status = 'running'
+      where id = any(${runIds}::uuid[])
+    `;
+
+    const snapshots = await txn<{ id: string; config_snapshot: unknown }[]>`
+      select id, config_snapshot
+      from public.orchestration_runs
+      where id = any(${runIds}::uuid[])
+    `;
+    const snapshotByRunId = new Map(snapshots.map((row) => [row.id, row.config_snapshot]));
+
+    return claimed.map((row) => ({
+      job_id: row.job_id,
+      run_id: row.run_id,
+      config_snapshot: snapshotByRunId.get(row.run_id) ?? null,
+    }));
+  });
+}
+
 async function pollLoop(
   sql: postgres.Sql,
   workerId: string,
@@ -19,35 +72,12 @@ async function pollLoop(
   while (true) {
     await new Promise((r) => setTimeout(r, pollIntervalMs));
 
-    const jobs = await sql`
-      select j.id as job_id, r.id as run_id, r.config_snapshot
-      from public.orchestration_jobs j
-      join public.orchestration_runs r on r.id = j.run_id
-      where j.status = 'pending'
-      and j.available_at <= now()
-      order by j.available_at asc
-      limit 5
-      for update of j skip locked
-    `;
+    const jobs = await claimPendingJobs(sql, workerId);
 
     if (!jobs.length) continue;
 
-    for (const job of jobs as unknown as Array<{ job_id: string; run_id: string; config_snapshot: unknown }>) {
+    for (const job of jobs) {
       try {
-        await sql.begin(async (txn) => {
-          await txn`
-            update public.orchestration_jobs
-            set status = 'processing', claimed_by = ${workerId}
-            where id = ${job.job_id}
-          `;
-
-          await txn`
-            update public.orchestration_runs
-            set status = 'running'
-            where id = ${job.run_id}
-          `;
-        });
-
         await launchOrchestrationRun({
           cwd: "/workdir",
           runOrchestration: async () => ({ orchestrationRunId: job.run_id }),
