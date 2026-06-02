@@ -11,7 +11,6 @@ type LaunchFn = (deps: LaunchDeps) => Promise<{ orchestrationRunId: string }>;
 type ClaimedJob = {
   job_id: string;
   run_id: string;
-  config_snapshot: unknown;
 };
 
 export async function claimPendingJobs(
@@ -46,18 +45,7 @@ export async function claimPendingJobs(
       where id = any(${runIds}::uuid[])
     `;
 
-    const snapshots = await txn<{ id: string; config_snapshot: unknown }[]>`
-      select id, config_snapshot
-      from public.orchestration_runs
-      where id = any(${runIds}::uuid[])
-    `;
-    const snapshotByRunId = new Map(snapshots.map((row) => [row.id, row.config_snapshot]));
-
-    return claimed.map((row) => ({
-      job_id: row.job_id,
-      run_id: row.run_id,
-      config_snapshot: snapshotByRunId.get(row.run_id) ?? null,
-    }));
+    return claimed;
   });
 }
 
