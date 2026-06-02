@@ -11,14 +11,22 @@ const jobsInsertMigration = readFileSync(
 );
 
 describe("orchestration_jobs RLS migrations", () => {
-  it("allows org members to insert jobs for their runs", () => {
+  it("allows org members to insert jobs only for queued runs without an active job", () => {
     expect(jobsInsertMigration).toContain("jobs_insert_run_org");
     expect(jobsInsertMigration).toContain("organization_members");
     expect(jobsInsertMigration).toContain("orchestration_jobs.run_id");
+    expect(jobsInsertMigration).toContain("r.status = 'queued'");
+    expect(jobsInsertMigration).toContain(
+      "j.status in ('pending', 'processing')",
+    );
+    expect(jobsInsertMigration).toContain(
+      "orchestration_jobs_one_active_per_run_idx",
+    );
   });
 
-  it("allows org members to delete queued runs for enqueue rollback", () => {
+  it("allows run creators to delete their own queued runs for enqueue rollback", () => {
     expect(jobsInsertMigration).toContain("runs_delete_queued_org");
     expect(jobsInsertMigration).toContain("status = 'queued'");
+    expect(jobsInsertMigration).toContain("initiating_user = auth.uid()");
   });
 });
