@@ -11,7 +11,6 @@ type LaunchFn = (deps: LaunchDeps) => Promise<{ orchestrationRunId: string }>;
 type ClaimedJob = {
   job_id: string;
   run_id: string;
-  config_snapshot: unknown;
 };
 
 export async function claimPendingJobs(
@@ -40,21 +39,13 @@ export async function claimPendingJobs(
     if (!claimed.length) return [];
 
     const runIds = [...new Set(claimed.map((row) => row.run_id))];
-    const runsUpdated = await txn<{ id: string; config_snapshot: unknown }[]>`
+    await txn`
       update public.orchestration_runs
       set status = 'running'
       where id = any(${runIds}::uuid[])
-      returning id, config_snapshot
     `;
-    const snapshotByRunId = new Map(
-      runsUpdated.map((row) => [row.id, row.config_snapshot]),
-    );
 
-    return claimed.map((row) => ({
-      job_id: row.job_id,
-      run_id: row.run_id,
-      config_snapshot: snapshotByRunId.get(row.run_id) ?? null,
-    }));
+    return claimed;
   });
 }
 

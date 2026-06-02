@@ -2,23 +2,32 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-const migration = readFileSync(
+const jobsInsertMigration = readFileSync(
   path.join(
     import.meta.dirname,
-    "../../../supabase/migrations/20260529110500_orchestration_jobs_insert_policy.sql",
+    "../../../supabase/migrations/20260602110000_orchestration_jobs_insert_rls.sql",
   ),
   "utf8",
 );
 
-describe("orchestration_jobs insert migration", () => {
-  it("restricts job insert to initiating user on queued runs", () => {
-    expect(migration).toContain("jobs_insert_run_org");
-    expect(migration).toContain("initiating_user = auth.uid()");
-    expect(migration).toContain("status = 'queued'");
+describe("orchestration_jobs RLS migrations", () => {
+  it("allows org members to insert jobs only for their own queued runs without an active job", () => {
+    expect(jobsInsertMigration).toContain("jobs_insert_run_org");
+    expect(jobsInsertMigration).toContain("organization_members");
+    expect(jobsInsertMigration).toContain("orchestration_jobs.run_id");
+    expect(jobsInsertMigration).toContain("initiating_user = auth.uid()");
+    expect(jobsInsertMigration).toContain("r.status = 'queued'");
+    expect(jobsInsertMigration).toContain(
+      "j.status in ('pending', 'processing')",
+    );
+    expect(jobsInsertMigration).toContain(
+      "orchestration_jobs_one_active_per_run_idx",
+    );
   });
 
-  it("restricts run delete to initiating user on queued runs", () => {
-    expect(migration).toContain("runs_delete_own_queued");
-    expect(migration).toContain("initiating_user = auth.uid()");
+  it("allows run creators to delete their own queued runs for enqueue rollback", () => {
+    expect(jobsInsertMigration).toContain("runs_delete_queued_org");
+    expect(jobsInsertMigration).toContain("status = 'queued'");
+    expect(jobsInsertMigration).toContain("initiating_user = auth.uid()");
   });
 });
