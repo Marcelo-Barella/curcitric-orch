@@ -8,42 +8,43 @@ interface LaunchDeps {
 
 type LaunchFn = (deps: LaunchDeps) => Promise<{ orchestrationRunId: string }>;
 
-type PendingJob = { job_id: string; run_id: string; config_snapshot: unknown };
+type ClaimedJob = {
+  job_id: string;
+  run_id: string;
+};
 
-async function claimPendingJobs(
+export async function claimPendingJobs(
   sql: postgres.Sql,
   workerId: string,
   limit = 5,
-): Promise<PendingJob[]> {
+): Promise<ClaimedJob[]> {
   return sql.begin(async (txn) => {
-    const rows = await txn<PendingJob[]>`
-      select j.id as job_id, r.id as run_id, r.config_snapshot
-      from public.orchestration_jobs j
-      join public.orchestration_runs r on r.id = j.run_id
-      where j.status = 'pending'
-      and j.available_at <= now()
-      order by j.available_at asc
-      limit ${limit}
-      for update of j skip locked
+    const claimed = await txn<ClaimedJob[]>`
+      with picked as (
+        select j.id, j.run_id
+        from public.orchestration_jobs j
+        where j.status = 'pending'
+          and j.available_at <= now()
+        order by j.available_at asc
+        limit ${limit}
+        for update skip locked
+      )
+      update public.orchestration_jobs j
+      set status = 'processing', claimed_by = ${workerId}
+      from picked
+      where j.id = picked.id
+      returning j.id as job_id, picked.run_id as run_id
     `;
 
-    const claimed: PendingJob[] = [];
-    for (const job of rows) {
-      const updated = await txn`
-        update public.orchestration_jobs
-        set status = 'processing', claimed_by = ${workerId}
-        where id = ${job.job_id} and status = 'pending'
-        returning id
-      `;
-      if (!updated.length) continue;
+    if (!claimed.length) return [];
 
-      await txn`
-        update public.orchestration_runs
-        set status = 'running'
-        where id = ${job.run_id}
-      `;
-      claimed.push(job);
-    }
+    const runIds = [...new Set(claimed.map((row) => row.run_id))];
+    await txn`
+      update public.orchestration_runs
+      set status = 'running'
+      where id = any(${runIds}::uuid[])
+    `;
+
     return claimed;
   });
 }
@@ -60,6 +61,7 @@ async function pollLoop(
     await new Promise((r) => setTimeout(r, pollIntervalMs));
 
     const jobs = await claimPendingJobs(sql, workerId);
+
     if (!jobs.length) continue;
 
     for (const job of jobs) {
@@ -114,4 +116,4 @@ if (isMainModule) {
   });
 }
 
-export { claimPendingJobs, pollLoop };
+export { pollLoop };
