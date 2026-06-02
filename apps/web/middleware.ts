@@ -8,7 +8,7 @@ function redirectOAuthCodeToCallback(
   request: NextRequest,
 ): NextResponse | null {
   const { pathname, searchParams } = request.nextUrl;
-  if (pathname === OAUTH_CALLBACK_PATH || !searchParams.has("code")) {
+  if (pathname !== "/" || !searchParams.has("code")) {
     return null;
   }
 
