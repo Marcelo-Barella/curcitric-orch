@@ -15,12 +15,14 @@ describe("worker poll loop", () => {
     expect(mod.claimPendingJobs).toBeTypeOf("function");
   });
 
-  it("claims pending jobs in one update statement", () => {
+  it("claims pending jobs atomically in a transaction", () => {
     expect(mainSource).toMatch(
-      /with picked as \([\s\S]*for update of j skip locked[\s\S]*update public\.orchestration_jobs/,
+      /with picked as \([\s\S]*for update skip locked[\s\S]*update public\.orchestration_jobs/,
     );
-    expect(mainSource).not.toMatch(
-      /for update of j skip locked[\s\S]*await sql\.begin/,
+    expect(mainSource).toMatch(/sql\.begin/);
+    expect(mainSource).toMatch(
+      /update public\.orchestration_runs[\s\S]*set status = 'running'/,
     );
+    expect(mainSource).not.toContain("config_snapshot");
   });
 });
