@@ -7,6 +7,26 @@ import { expect, test } from "@playwright/test";
  * E2E uses request.get(..., { maxRedirects: 0 }) so the first hop is asserted, not /.
  */
 test.describe("OAuth callback route", () => {
+  test("root with code redirects to /auth/callback preserving query", async ({
+    request,
+    baseURL,
+  }) => {
+    const response = await request.get(
+      "/?code=test-oauth-code&next=%2Fdashboard",
+      { maxRedirects: 0 },
+    );
+    expect(response.status()).not.toBe(404);
+    const status = response.status();
+    expect(status).toBeGreaterThanOrEqual(300);
+    expect(status).toBeLessThan(400);
+    const location = response.headers().location;
+    expect(location).toBeTruthy();
+    const resolved = new URL(location!, baseURL ?? "http://localhost:3000");
+    expect(resolved.pathname).toBe("/auth/callback");
+    expect(resolved.searchParams.get("code")).toBe("test-oauth-code");
+    expect(resolved.searchParams.get("next")).toBe("/dashboard");
+  });
+
   test("missing code redirects to site root with 3xx (not 404)", async ({
     request,
     baseURL,
