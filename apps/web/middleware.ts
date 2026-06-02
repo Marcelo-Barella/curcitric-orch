@@ -2,7 +2,25 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/lib/supabase/database.types";
 
+const OAUTH_CALLBACK_PATH = "/auth/callback";
+
+function redirectOAuthCodeToCallback(
+  request: NextRequest,
+): NextResponse | null {
+  const { pathname, searchParams } = request.nextUrl;
+  if (pathname !== "/" || !searchParams.has("code")) {
+    return null;
+  }
+
+  const callbackUrl = request.nextUrl.clone();
+  callbackUrl.pathname = OAUTH_CALLBACK_PATH;
+  return NextResponse.redirect(callbackUrl);
+}
+
 export async function middleware(request: NextRequest) {
+  const oauthRedirect = redirectOAuthCodeToCallback(request);
+  if (oauthRedirect) return oauthRedirect;
+
   let supabaseResponse = NextResponse.next({ request });
 
   const supabase = createServerClient<Database>(
