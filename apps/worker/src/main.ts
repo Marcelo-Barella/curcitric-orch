@@ -8,6 +8,36 @@ interface LaunchDeps {
 
 type LaunchFn = (deps: LaunchDeps) => Promise<{ orchestrationRunId: string }>;
 
+type ClaimedJob = {
+  job_id: string;
+  run_id: string;
+  config_snapshot: unknown;
+};
+
+async function claimPendingJobs(
+  sql: postgres.Sql,
+  workerId: string,
+): Promise<ClaimedJob[]> {
+  return (await sql`
+    with picked as (
+      select j.id as job_id, r.id as run_id, r.config_snapshot
+      from public.orchestration_jobs j
+      join public.orchestration_runs r on r.id = j.run_id
+      where j.status = 'pending'
+        and j.available_at <= now()
+      order by j.available_at asc
+      limit 5
+      for update of j skip locked
+    )
+    update public.orchestration_jobs j
+    set status = 'processing', claimed_by = ${workerId}
+    from picked p
+    where j.id = p.job_id
+      and j.status = 'pending'
+    returning j.id as job_id, p.run_id, p.config_snapshot
+  `) as ClaimedJob[];
+}
+
 async function pollLoop(
   sql: postgres.Sql,
   workerId: string,
@@ -19,34 +49,17 @@ async function pollLoop(
   while (true) {
     await new Promise((r) => setTimeout(r, pollIntervalMs));
 
-    const jobs = await sql`
-      select j.id as job_id, r.id as run_id, r.config_snapshot
-      from public.orchestration_jobs j
-      join public.orchestration_runs r on r.id = j.run_id
-      where j.status = 'pending'
-      and j.available_at <= now()
-      order by j.available_at asc
-      limit 5
-      for update of j skip locked
-    `;
+    const jobs = await claimPendingJobs(sql, workerId);
 
     if (!jobs.length) continue;
 
-    for (const job of jobs as unknown as Array<{ job_id: string; run_id: string; config_snapshot: unknown }>) {
+    for (const job of jobs) {
       try {
-        await sql.begin(async (txn) => {
-          await txn`
-            update public.orchestration_jobs
-            set status = 'processing', claimed_by = ${workerId}
-            where id = ${job.job_id}
-          `;
-
-          await txn`
-            update public.orchestration_runs
-            set status = 'running'
-            where id = ${job.run_id}
-          `;
-        });
+        await sql`
+          update public.orchestration_runs
+          set status = 'running'
+          where id = ${job.run_id}
+        `;
 
         await launchOrchestrationRun({
           cwd: "/workdir",
@@ -98,4 +111,4 @@ if (isMainModule) {
   });
 }
 
-export { pollLoop };
+export { pollLoop, claimPendingJobs };

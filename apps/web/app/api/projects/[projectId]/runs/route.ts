@@ -44,10 +44,24 @@ export async function POST(
   if (error)
     return NextResponse.json({ error: error.message }, { status: 400 });
 
-  await supabase.from("orchestration_jobs").insert({
-    run_id: inserted!.id,
+  if (!inserted)
+    return NextResponse.json({ error: "run insert returned no row" }, { status: 500 });
+
+  const { error: jobError } = await supabase.from("orchestration_jobs").insert({
+    run_id: inserted.id,
     status: "pending",
   });
 
-  return NextResponse.json({ runId: inserted!.id });
+  if (jobError) {
+    const { error: rollbackError } = await supabase
+      .from("orchestration_runs")
+      .delete()
+      .eq("id", inserted.id);
+    const message = rollbackError
+      ? `${jobError.message}; rollback failed: ${rollbackError.message}`
+      : jobError.message;
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
+
+  return NextResponse.json({ runId: inserted.id });
 }
