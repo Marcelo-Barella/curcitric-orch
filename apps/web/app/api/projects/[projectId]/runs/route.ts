@@ -50,8 +50,17 @@ export async function POST(
   });
 
   if (jobError) {
-    await supabase.from("orchestration_runs").delete().eq("id", inserted!.id);
-    return NextResponse.json({ error: jobError.message }, { status: 400 });
+    const { error: rollbackError } = await supabase
+      .from("orchestration_runs")
+      .delete()
+      .eq("id", inserted!.id);
+    const message = rollbackError
+      ? `${jobError.message}; rollback failed: ${rollbackError.message}`
+      : jobError.message;
+    return NextResponse.json(
+      { error: message },
+      { status: rollbackError ? 500 : 400 },
+    );
   }
 
   return NextResponse.json({ runId: inserted!.id });

@@ -40,18 +40,15 @@ export async function claimPendingJobs(
     if (!claimed.length) return [];
 
     const runIds = [...new Set(claimed.map((row) => row.run_id))];
-    await txn`
+    const runsUpdated = await txn<{ id: string; config_snapshot: unknown }[]>`
       update public.orchestration_runs
       set status = 'running'
       where id = any(${runIds}::uuid[])
+      returning id, config_snapshot
     `;
-
-    const snapshots = await txn<{ id: string; config_snapshot: unknown }[]>`
-      select id, config_snapshot
-      from public.orchestration_runs
-      where id = any(${runIds}::uuid[])
-    `;
-    const snapshotByRunId = new Map(snapshots.map((row) => [row.id, row.config_snapshot]));
+    const snapshotByRunId = new Map(
+      runsUpdated.map((row) => [row.id, row.config_snapshot]),
+    );
 
     return claimed.map((row) => ({
       job_id: row.job_id,
