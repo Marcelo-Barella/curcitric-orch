@@ -11,10 +11,11 @@ const jobsInsertMigration = readFileSync(
 );
 
 describe("orchestration_jobs RLS migrations", () => {
-  it("allows org members to insert jobs only for queued runs without an active job", () => {
+  it("allows org members to insert jobs only for their own queued runs without an active job", () => {
     expect(jobsInsertMigration).toContain("jobs_insert_run_org");
     expect(jobsInsertMigration).toContain("organization_members");
     expect(jobsInsertMigration).toContain("orchestration_jobs.run_id");
+    expect(jobsInsertMigration).toContain("initiating_user = auth.uid()");
     expect(jobsInsertMigration).toContain("r.status = 'queued'");
     expect(jobsInsertMigration).toContain(
       "j.status in ('pending', 'processing')",

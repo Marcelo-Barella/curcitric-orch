@@ -60,7 +60,10 @@ export async function POST(
     const message = rollbackError
       ? `${jobError.message}; rollback failed: ${rollbackError.message}`
       : jobError.message;
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json(
+      { error: message },
+      { status: rollbackError ? 500 : 400 },
+    );
   }
 
   return NextResponse.json({ runId: inserted.id });

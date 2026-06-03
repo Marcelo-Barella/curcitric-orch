@@ -9,6 +9,7 @@ for insert with check (
     join public.organization_members m on m.org_id = r.org_id
     where r.id = orchestration_jobs.run_id
       and m.user_id = auth.uid()
+      and r.initiating_user = auth.uid()
       and r.status = 'queued'
       and not exists (
         select 1 from public.orchestration_jobs j

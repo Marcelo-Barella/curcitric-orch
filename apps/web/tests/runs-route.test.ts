@@ -14,6 +14,7 @@ function makeChain(data: unknown, error: unknown = null) {
   const chain = {
     select: vi.fn().mockReturnThis(),
     insert: vi.fn().mockReturnThis(),
+    delete: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
     maybeSingle: vi.fn().mockResolvedValue({ data, error }),
   };
@@ -101,29 +102,59 @@ describe("POST /api/projects/[projectId]/runs", () => {
     expect(body.runId).toBe("run-123");
   });
 
-  it("returns 500 and rolls back run when job enqueue fails", async () => {
+  it("rolls back run when job insert fails", async () => {
     mockGetUser.mockResolvedValue({
       data: { user: { id: "user-1" } },
     });
     const projectChain = makeChain({ org_id: "org-1" });
-    const membershipChain = makeChain({ role: "member" });
-    const insertChain = makeChain({ id: "run-456" });
+    const membershipChain = makeChain({ role: "admin" });
+    const insertChain = makeChain({ id: "run-123" });
     const jobChain = {
-      insert: vi.fn().mockResolvedValue({
-        error: { message: "new row violates row-level security policy" },
-      }),
+      insert: vi.fn().mockResolvedValue({ error: { message: "rls denied" } }),
     };
-    const deleteChain = {
-      delete: vi.fn().mockReturnThis(),
-      eq: vi.fn().mockResolvedValue({ error: null }),
-    };
+    const rollbackChain = makeChain(null);
+    rollbackChain.eq = vi.fn().mockResolvedValue({ error: null });
 
     mockFrom
       .mockReturnValueOnce(projectChain)
       .mockReturnValueOnce(membershipChain)
       .mockReturnValueOnce(insertChain)
       .mockReturnValueOnce(jobChain)
-      .mockReturnValueOnce(deleteChain);
+      .mockReturnValueOnce(rollbackChain);
+
+    const { POST } = await import(
+      "../app/api/projects/[projectId]/runs/route.js"
+    );
+    const response = await POST(new Request("http://localhost"), {
+      params: Promise.resolve({ projectId: "proj-1" }),
+    });
+
+    expect(response.status).toBe(400);
+    expect(rollbackChain.delete).toHaveBeenCalled();
+    expect(rollbackChain.eq).toHaveBeenCalledWith("id", "run-123");
+  });
+
+  it("returns 500 when job insert and rollback both fail", async () => {
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: "user-1" } },
+    });
+    const projectChain = makeChain({ org_id: "org-1" });
+    const membershipChain = makeChain({ role: "admin" });
+    const insertChain = makeChain({ id: "run-123" });
+    const jobChain = {
+      insert: vi.fn().mockResolvedValue({ error: { message: "rls denied" } }),
+    };
+    const rollbackChain = makeChain(null);
+    rollbackChain.eq = vi
+      .fn()
+      .mockResolvedValue({ error: { message: "delete denied" } });
+
+    mockFrom
+      .mockReturnValueOnce(projectChain)
+      .mockReturnValueOnce(membershipChain)
+      .mockReturnValueOnce(insertChain)
+      .mockReturnValueOnce(jobChain)
+      .mockReturnValueOnce(rollbackChain);
 
     const { POST } = await import(
       "../app/api/projects/[projectId]/runs/route.js"
@@ -133,7 +164,7 @@ describe("POST /api/projects/[projectId]/runs", () => {
     });
 
     expect(response.status).toBe(500);
-    expect(deleteChain.delete).toHaveBeenCalled();
-    expect(deleteChain.eq).toHaveBeenCalledWith("id", "run-456");
+    const body = await response.json();
+    expect(body.error).toContain("rollback failed");
   });
 });
