@@ -23,6 +23,8 @@ describe("worker poll loop", () => {
     expect(mainSource).toMatch(
       /update public\.orchestration_runs[\s\S]*set status = 'running'/,
     );
+    expect(mainSource).toMatch(/reclaimStaleProcessingJobs/);
+    expect(mainSource).toMatch(/persistJobCompletion/);
     expect(mainSource).not.toContain("config_snapshot");
   });
 });
