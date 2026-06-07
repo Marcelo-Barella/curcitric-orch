@@ -9,7 +9,10 @@ describe("claimPendingJobs", () => {
     const txn = Object.assign(
       (strings: TemplateStringsArray) => {
         const sql = strings.join("");
-        if (sql.includes("with picked")) return claimUpdate();
+        if (sql.includes("with picked")) {
+          expect(sql).toContain("claimed_at = now()");
+          return claimUpdate();
+        }
         if (sql.includes("orchestration_runs")) return updateRun();
         throw new Error(`unexpected sql: ${sql}`);
       },

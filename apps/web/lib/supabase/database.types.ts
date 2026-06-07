@@ -15,6 +15,7 @@ export type Database = {
       orchestration_jobs: {
         Row: {
           available_at: string
+          claimed_at: string | null
           claimed_by: string | null
           id: string
           run_id: string
@@ -22,6 +23,7 @@ export type Database = {
         }
         Insert: {
           available_at?: string
+          claimed_at?: string | null
           claimed_by?: string | null
           id?: string
           run_id: string
@@ -29,6 +31,7 @@ export type Database = {
         }
         Update: {
           available_at?: string
+          claimed_at?: string | null
           claimed_by?: string | null
           id?: string
           run_id?: string
